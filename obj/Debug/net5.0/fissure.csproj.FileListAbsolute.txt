@@ -1,0 +1,16 @@
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/fissure
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/fissure.deps.json
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/fissure.runtimeconfig.json
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/fissure.runtimeconfig.dev.json
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/fissure.dll
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/ref/fissure.dll
+/home/elekrisk/projects/fissure/bin/Debug/net5.0/fissure.pdb
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.csprojAssemblyReference.cache
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.GeneratedMSBuildEditorConfig.editorconfig
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.AssemblyInfoInputs.cache
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.AssemblyInfo.cs
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.csproj.CoreCompileInputs.cache
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.dll
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/ref/fissure.dll
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.pdb
+/home/elekrisk/projects/fissure/obj/Debug/net5.0/fissure.genruntimeconfig.cache

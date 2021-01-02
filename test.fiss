@@ -1,0 +1,5 @@
+
+struct Program:
+    main(args):
+        let val = args { get index: 0 }
+        system.stdout { println value: val }
