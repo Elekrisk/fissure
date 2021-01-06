@@ -16,6 +16,7 @@ namespace fissure
 
         public override string ToString() => TokenType switch
         {
+            TokenType.And => "And",
             TokenType.Assign => "Assign",
             TokenType.Bool => "Bool",
             TokenType.Char => "Char",
@@ -46,8 +47,10 @@ namespace fissure
             TokenType.Let => "Let",
             TokenType.LParen => "LParen",
             TokenType.Minus => "Minus",
+            TokenType.New => "New",
             TokenType.Not => "Not",
             TokenType.NotEqual => "NotEqual",
+            TokenType.Or => "Or",
             TokenType.Period => "Period",
             TokenType.Plus => "Plus",
             TokenType.RBrace => "RBrace",
@@ -57,6 +60,7 @@ namespace fissure
             TokenType.Star => "Star",
             TokenType.String => "String",
             TokenType.While => "While",
+            TokenType.Xor => "Xor",
             _ => throw new NotImplementedException()
         };
     }
@@ -159,6 +163,10 @@ namespace fissure
         For,
         In,
         While,
+        And,
+        Or,
+        Xor,
+        New,
 
         Identifier,
         String,

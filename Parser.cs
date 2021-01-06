@@ -12,8 +12,8 @@ namespace fissure
         public abstract class ParseResult<T>
         {
             public static ParseResult<T> Ok(T value) => new Ok_(value);
-            public static ParseResult<T> Err(string error) => new Err_(error);
-            public static ParseResult<T> Fatal(string error) => new Fatal_(error);
+            public static ParseResult<T> Err(Location location, string error) => new Err_($"{location}: {error}");
+            public static ParseResult<T> Fatal(Location location, string error) => new Fatal_($"{location}: {error}");
 
             public abstract T Unwrap();
             public abstract ParseResult<U> Transmute<U>();
@@ -76,10 +76,10 @@ namespace fissure
                 public override T Unwrap() => throw new Exception($"Tried to unwrap an Error value: {Error}");
                 public override ParseResult<U> Map<U>(Func<T, U> f) => Transmute<U>();
 
-                public override ParseResult<U> Transmute<U>() => ParseResult<U>.Err(Error);
+                public override ParseResult<U> Transmute<U>() => new ParseResult<U>.Err_(Error);
 
-                public override ParseResult<T> MakeFatal() => Fatal(Error);
-                public override ParseResult<T> MakeFatal(string error) => Fatal(error);
+                public override ParseResult<T> MakeFatal() => new Fatal_(Error);
+                public override ParseResult<T> MakeFatal(string error) => new Fatal_(error);
 
                 public void Deconstruct(out string error) => error = Error;
 
@@ -95,6 +95,7 @@ namespace fissure
                 public Fatal_(string error)
                 {
                     Error = error;
+                    throw new Exception(error);
                 }
 
                 public override bool IsOk => false;
@@ -108,7 +109,7 @@ namespace fissure
 
                 public override ParseResult<U> Map<U>(Func<T, U> f) => Transmute<U>();
 
-                public override ParseResult<U> Transmute<U>() => ParseResult<U>.Fatal(Error);
+                public override ParseResult<U> Transmute<U>() => new ParseResult<U>.Fatal_(Error);
 
                 public override T Unwrap() => throw new Exception($"Tried to unwrap an Error value: {Error}");
 
@@ -137,14 +138,15 @@ namespace fissure
             return result;
         }
 
-        Lexer lexer;
-        List<Token> tokens = new();
+        string fileName;
+        List<Token> tokens;
         int index = 0;
         List<int> indentStack = new() { 0 };
 
-        public Parser(Lexer lexer)
+        public Parser(string fileName, List<Token> tokens)
         {
-            this.lexer = lexer;
+            this.fileName = fileName;
+            this.tokens = tokens;
         }
 
 
@@ -157,15 +159,16 @@ namespace fissure
                     () => ParseStar(() => ParseToken(TokenType.EOL)),
                     (a, b) => Ok(a)
                 )),
-                (a, ss) =>
+                () => ParseToken(TokenType.EOF).MakeFatal(),
+                (a, ss, c) =>
                 {
                     ProgramNode program = new(
                         ss.Count > 0 
                         ? ss[0].Location 
                         : (a.Count > 0 
                            ? a[0].Location 
-                           : new Location { FileName = "???", Row = 1, Column = 1, Index = 0 })
-                          );
+                           : new ConcreteLocation(fileName, 1, 1, 0)
+                          ));
                     program.StructDeclarations.AddRange(ss);
                     return Ok(program);
                 }
@@ -176,9 +179,9 @@ namespace fissure
         ParseResult<StructDeclaration> ParseStructDeclaration() => Call(nameof(ParseStructDeclaration),
             () => ParseSequence(
                 () => ParseToken(TokenType.Struct),
-                () => ParseToken(TokenType.Identifier),
-                () => ParseToken(TokenType.Colon),
-                () => ParsePlus(() => ParseToken(TokenType.EOL)),
+                () => ParseToken(TokenType.Identifier).MakeFatal(),
+                () => ParseToken(TokenType.Colon).MakeFatal(),
+                () => ParsePlus(() => ParseToken(TokenType.EOL)).MakeFatal(),
                 () => Block(() => ParseSequence(
                     () => ParseChoice(
                         () => ParseMemberDeclaration().CastUnchecked<Node>(),
@@ -212,8 +215,8 @@ namespace fissure
             () => ParseSequence(
                 () => ParseToken(TokenType.Identifier),
                 () => ParseToken(TokenType.DoubleColon),
-                ParseTypeExpression,
-                () => ParseToken(TokenType.EOL),
+                () => ParseTypeExpression().MakeFatal(),
+                () => ParseToken(TokenType.EOL).MakeFatal(),
                 (a, b, c, d) => Ok(new MemberDeclaration(a.Location, ((StringToken)b).Value, c))
             )
         );
@@ -222,20 +225,20 @@ namespace fissure
         ParseResult<MessageHandlerDeclaration> ParseMessageHandlerDeclaration() => Call(nameof(ParseMessageHandlerDeclaration),
             () => ParseSequence(
                 () => ParseToken(TokenType.Identifier),
-                () => ParseToken(TokenType.LParen),
+                () => ParseToken(TokenType.LParen).MakeFatal(),
                 () => ParseOptional(() => ParseSequence(
                     () => ParseToken(TokenType.Identifier),
                     () => ParseOptional(() => ParseSequence(
                         () => ParseToken(TokenType.DoubleColon),
-                        ParseTypeExpression,
+                        () => ParseTypeExpression().MakeFatal(),
                         (a, b) => Ok(b)
                     )),
                     () => ParseStar(() => ParseSequence(
                         () => ParseToken(TokenType.Comma),
-                        () => ParseToken(TokenType.Identifier),
+                        () => ParseToken(TokenType.Identifier).MakeFatal(),
                         () => ParseOptional(() => ParseSequence(
                             () => ParseToken(TokenType.DoubleColon),
-                            ParseTypeExpression,
+                            () => ParseTypeExpression().MakeFatal(),
                             (a, b) => Ok(b)
                         )),
                         (a, b, c) =>
@@ -254,9 +257,9 @@ namespace fissure
                         return Ok(parameters);
                     }
                 )),
-                () => ParseToken(TokenType.RParen),
-                () => ParseToken(TokenType.Colon),
-                () => ParseToken(TokenType.EOL),
+                () => ParseToken(TokenType.RParen).MakeFatal(),
+                () => ParseToken(TokenType.Colon).MakeFatal(),
+                () => ParseToken(TokenType.EOL).MakeFatal(),
                 () => Block(() => ParseSequence(
                     ParseStatement,
                     () => ParseStar(() => ParseToken(TokenType.EOL)),
@@ -276,33 +279,33 @@ namespace fissure
         );
 
         ParseResult<Statement> ParseStatement() => Call(nameof(ParseStatement),
-            () => ParseChoice(
+            () =>  ParseChoice(
                 // Let
                 () => ParseSequence(
                     () => ParseToken(TokenType.Let),
-                    ParsePattern,
-                    () => ParseToken(TokenType.Assign),
-                    ParseExpression,
-                    () => ParseToken(TokenType.EOL),
+                    () => ParsePattern().MakeFatal(),
+                    () => ParseToken(TokenType.Assign).MakeFatal(),
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.EOL).MakeFatal(),
                     (a, b, c, d, e) => Ok((Statement)new LetStatement(a.Location, b, d))
                 ),
                 // Assign
                 () => ParseSequence(
                     ParsePath,
                     () => ParseToken(TokenType.Assign),
-                    ParseExpression,
-                    () => ParseToken(TokenType.EOL),
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.EOL).MakeFatal(),
                     (a, b, c, d) => Ok((Statement)new AssignStatement(a.Location, a, c))
                 ),
                 // For
                 () => ParseSequence(
                     () => ParseToken(TokenType.For),
-                    ParsePattern,
-                    () => ParseToken(TokenType.In),
-                    ParseExpression,
-                    () => ParseToken(TokenType.Colon),
-                    () => ParseToken(TokenType.EOL),
-                    ParseStatementBlock,
+                    () => ParsePattern().MakeFatal(),
+                    () => ParseToken(TokenType.In).MakeFatal(),
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.Colon).MakeFatal(),
+                    () => ParseToken(TokenType.EOL).MakeFatal(),
+                    () => ParseStatementBlock().MakeFatal(),
                     (a, b, c, d, e, f, g) =>
                     {
                         var body = new BlockExpression(e.Location);
@@ -313,10 +316,10 @@ namespace fissure
                 // While
                 () => ParseSequence(
                     () => ParseToken(TokenType.While),
-                    ParseExpression,
-                    () => ParseToken(TokenType.Colon),
-                    () => ParseToken(TokenType.EOL),
-                    ParseStatementBlock,
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.Colon).MakeFatal(),
+                    () => ParseToken(TokenType.EOL).MakeFatal(),
+                    () => ParseStatementBlock().MakeFatal(),
                     (a, b, c, d, e) =>
                     {
                         var body = new BlockExpression(c.Location);
@@ -341,9 +344,371 @@ namespace fissure
             ))
         );
 
-        ParseResult<Path> ParsePath() => throw new NotImplementedException();
+        ParseResult<Path> ParsePath() => Call(nameof(ParsePath),
+            () => ParseSequence(
+                () => ParseToken(TokenType.Identifier),
+                () => ParseStar(() => ParseSequence(
+                    () => ParseToken(TokenType.Period),
+                    () => ParseToken(TokenType.Identifier).MakeFatal(),
+                    (a, b) => Ok(b)
+                )),
+                (a, b) =>
+                {
+                    Path v = new IdentifierPath(a.Location, ((StringToken)a).Value);
+                    while (b.Count > 0)
+                    {
+                        v = new PropertyPath(v.Location, v, ((StringToken)b[0]).Value);
+                        b.RemoveAt(0);
+                    }
+                    return Ok(v);
+                }
+            )
+        );
 
-        ParseResult<Expression> ParseExpression() => throw new NotImplementedException();
+        /*
+         * 
+         * Operator precedence
+         * 9 .
+         * 8 - !
+         * 7 * / //
+         * 6 + -
+         * 5 > < >= <=
+         * 4 == !=
+         * 3 and
+         * 2 or
+         * 1 xor
+         * 0   
+         * 
+         */
+        ParseResult<Expression> ParseExpression() => Call(nameof(ParseExpression),
+            () => ParseChoice(
+                // If
+                () => ParseSequence(
+                    () => ParseToken(TokenType.If),
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.Colon).MakeFatal(),
+                    () => ParseToken(TokenType.EOL).MakeFatal(),
+                    () => ParseStatementBlock().MakeFatal(),
+                    () => ParseStar(() => ParseSequence(
+                        () => ParseToken(TokenType.Else),
+                        () => ParseToken(TokenType.If),
+                        () => ParseExpression().MakeFatal(),
+                        () => ParseToken(TokenType.Colon).MakeFatal(),
+                        () => ParseToken(TokenType.EOL).MakeFatal(),
+                        () => ParseStatementBlock().MakeFatal(),
+                        (a, b, c, d, e, f) =>
+                        {
+                            var body = new BlockExpression(d.Location);
+                            body.Statements.AddRange(f);
+                            return Ok(new ElseIfExpression(a.Location, c, body));
+                        }
+                    )),
+                    () => ParseOptional(() => ParseSequence(
+                        () => ParseToken(TokenType.Else),
+                        () => ParseToken(TokenType.Colon).MakeFatal(),
+                        () => ParseToken(TokenType.EOL).MakeFatal(),
+                        () => ParseStatementBlock().MakeFatal(),
+                        (a, b, c, d) =>
+                        {
+                            var body = new BlockExpression(b.Location);
+                            body.Statements.AddRange(d);
+                            return Ok(body);
+                        }
+                    )),
+                    (a, b, c, d, e, f, g) =>
+                    {
+                        var cond = b;
+                        var body = new BlockExpression(c.Location);
+                        body.Statements.AddRange(e);
+                        return Ok((Expression)new IfExpression(a.Location, cond, body, g));
+                    }
+                ),
+                ParseExpression0
+            )
+        );
+
+        ParseResult<Expression> ParseExpression0() => Call(nameof(ParseExpression0),
+            () => ParseChoice(
+                // MessageApplication
+                () => ParseSequence(
+                    () => ParseStar(ParseExpression1),
+                    ee =>
+                    {
+                        if (ee.Count < 2)
+                        {
+                            return Err<Expression>(ee.Count > 0 ? ee[0].Location : Peek().Location, "Expected two or more expressions");
+                        }
+                        var e = ee[0];
+                        ee.RemoveAt(0);
+                        while (ee.Count > 0)
+                        {
+                            e = new MessageApplicationExpression(e.Location, e, ee[0]);
+                            ee.RemoveAt(0);
+                        }
+                        return Ok(e);
+                    }
+                ),
+                // Expression1
+                ParseExpression1
+            )
+        );
+
+        ParseResult<Expression> ParseExpression1() => Call(nameof(ParseExpression1),
+            () => ParseChoice(
+                // Xor
+                () => ParseBinary(TokenType.Xor, ParseExpression2, BinaryExpression.BOperator.Xor),
+                // Expression2
+                ParseExpression2
+            )
+        );
+
+        ParseResult<Expression> ParseExpression2() => Call(nameof(ParseExpression2),
+            () => ParseChoice(
+                // Or
+                () => ParseBinary(TokenType.Or, ParseExpression3, BinaryExpression.BOperator.Or),
+                // Expression3
+                ParseExpression3
+            )
+        );
+
+        ParseResult<Expression> ParseExpression3() => Call(nameof(ParseExpression3),
+            () => ParseChoice(
+                // And
+                () => ParseBinary(TokenType.And, ParseExpression4, BinaryExpression.BOperator.And),
+                // Expression4
+                ParseExpression4
+            )
+        );
+
+        ParseResult<Expression> ParseExpression4() => Call(nameof(ParseExpression4),
+            () => ParseChoice(
+                // Equal
+                () => ParseSequence(
+                    ParseExpression5,
+                    () => ParseToken(TokenType.Equal),
+                    () => ParseExpression5().MakeFatal(),
+                    (a, b, c) => Ok((Expression)new BinaryExpression(a.Location, a, BinaryExpression.BOperator.Equal, c))
+                ),
+                // NotEqual
+                () => ParseSequence(
+                    ParseExpression5,
+                    () => ParseToken(TokenType.NotEqual),
+                    () => ParseExpression5().MakeFatal(),
+                    (a, b, c) => Ok((Expression)new BinaryExpression(a.Location, a, BinaryExpression.BOperator.NotEqual, c))
+                ),
+                // Expression5
+                ParseExpression5
+            )
+        );
+
+        ParseResult<Expression> ParseExpression5() => Call(nameof(ParseExpression5),
+            () => ParseChoice(
+                // GreaterThan
+                () => ParseSequence(
+                    ParseExpression6,
+                    () => ParseToken(TokenType.GreaterThan),
+                    () => ParseExpression6().MakeFatal(),
+                    (a, b, c) => Ok((Expression)new BinaryExpression(a.Location, a, BinaryExpression.BOperator.GreaterThan, c))
+                ),
+                // GreaterThanOrEqual
+                () => ParseSequence(
+                    ParseExpression6,
+                    () => ParseToken(TokenType.GreaterThanOrEqual),
+                    () => ParseExpression6().MakeFatal(),
+                    (a, b, c) => Ok((Expression)new BinaryExpression(a.Location, a, BinaryExpression.BOperator.GreaterThanOrEqual, c))
+                ),
+                // LesserThan
+                () => ParseSequence(
+                    ParseExpression6,
+                    () => ParseToken(TokenType.LesserThan),
+                    () => ParseExpression6().MakeFatal(),
+                    (a, b, c) => Ok((Expression)new BinaryExpression(a.Location, a, BinaryExpression.BOperator.LesserThan, c))
+                ),
+                // LesserThanOrEqual
+                () => ParseSequence(
+                    ParseExpression6,
+                    () => ParseToken(TokenType.LesserThanOrEqual),
+                    () => ParseExpression6().MakeFatal(),
+                    (a, b, c) => Ok((Expression)new BinaryExpression(a.Location, a, BinaryExpression.BOperator.LesserThanOrEqual, c))
+                ),
+                ParseExpression6
+            )
+        );
+
+        ParseResult<Expression> ParseExpression6() => Call(nameof(ParseExpression6),
+            () => ParseChoice(
+                // Add
+                () => ParseBinary(TokenType.Plus, ParseExpression7, BinaryExpression.BOperator.Add),
+                // Subtract
+                () => ParseBinary(TokenType.Minus, ParseExpression7, BinaryExpression.BOperator.Subtract),
+                ParseExpression7
+            )
+        );
+        
+        ParseResult<Expression> ParseExpression7() => Call(nameof(ParseExpression7),
+            () => ParseChoice(
+                // Multiply
+                () => ParseBinary(TokenType.Star, ParseExpression8, BinaryExpression.BOperator.Multiply),
+                // Divide
+                () => ParseBinary(TokenType.Slash, ParseExpression8, BinaryExpression.BOperator.Divide),
+                // IntegerDivide
+                () => ParseBinary(TokenType.DoubleSlash, ParseExpression8, BinaryExpression.BOperator.IntegerDivide),
+                // ParseExpression8
+                ParseExpression8
+            )
+        );
+
+        ParseResult<Expression> ParseExpression8() => Call(nameof(ParseExpression8),
+            () => ParseChoice(
+                // Negate
+                () => ParseSequence(
+                    () => ParseToken(TokenType.Minus),
+                    () => ParseExpression9().MakeFatal(),
+                    (a, b) => Ok((Expression)new UnaryExpression(a.Location, UnaryExpression.UOperator.Negate, b))
+                ),
+                // Not
+                () => ParseSequence(
+                    () => ParseToken(TokenType.Not),
+                    () => ParseExpression9().MakeFatal(),
+                    (a, b) => Ok((Expression)new UnaryExpression(a.Location, UnaryExpression.UOperator.Not, b))
+                ),
+                // ParseExpression9
+                ParseExpression9
+            )
+        );
+
+        ParseResult<Expression> ParseExpression9() => Call(nameof(ParseExpression9),
+            () => ParseChoice(
+                // PropertyAccess
+                () => ParseSequence(
+                    ParseExpressionAtom,
+                    () => ParseToken(TokenType.Period),
+                    () => ParseToken(TokenType.Identifier).MakeFatal(),
+                    (a, b, c) => Ok((Expression)new PropertyAccessExpression(a.Location, a, ((StringToken)c).Value))
+                ),
+                // ExpressionAtom
+                ParseExpressionAtom
+            )
+        );
+
+        ParseResult<Expression> ParseExpressionAtom() => Call(nameof(ParseExpressionAtom),
+            () => ParseChoice(
+                // BlockExpression
+                () => ParseSequence(
+                    () => ParseToken(TokenType.Do),
+                    () => ParseToken(TokenType.Colon).MakeFatal(),
+                    () => ParseToken(TokenType.EOL).MakeFatal(),
+                    () => ParseStatementBlock().MakeFatal(),
+                    (a, b, c, d) =>
+                    {
+                        var body = new BlockExpression(b.Location);
+                        body.Statements.AddRange(d);
+                        return Ok((Expression)body);
+                    }
+                ),
+                // ObjectCreationExpression
+                () => ParseSequence(
+                    () => ParseToken(TokenType.New),
+                    () => ParseTypeExpression().MakeFatal(),
+                    (a, b) => Ok((Expression)new ObjectCreationExpression(a.Location, b))
+                ),
+                // MessageCreationExpression
+                () => ParseSequence(
+                    () => ParseToken(TokenType.LBrace),
+                    () => ParseToken(TokenType.Identifier).MakeFatal(),
+                    () => ParseStar(() => ParseSequence(
+                        () => ParseToken(TokenType.Identifier),
+                        () => ParseToken(TokenType.Colon).MakeFatal(),
+                        () => ParseExpression().MakeFatal(),
+                        (a, b, c) => Ok(new Argument(a.Location, ((StringToken)a).Value, c))
+                    )),
+                    () => ParseToken(TokenType.RBrace).MakeFatal(),
+                    (a, b, c, d) =>
+                    {
+                        var expr = new MessageCreationExpression(a.Location, ((StringToken)b).Value);
+                        expr.Arguments.AddRange(c);
+                        return Ok((Expression)expr);
+                    }
+                ),
+                // TupleConstructionExpression
+                () => ParseSequence(
+                    () => ParseToken(TokenType.LParen),
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.Comma),
+                    () => ParseOptional(() => ParseSequence(
+                        ParseExpression,
+                        () => ParseStar(() => ParseSequence(
+                            () => ParseToken(TokenType.Comma),
+                            () => ParseExpression().MakeFatal(),
+                            (a, b) => Ok(b)
+                        )),
+                        (a, b) =>
+                        {
+                            b.Insert(0, a);
+                            return Ok(b);
+                        }
+                    )),
+                    () => ParseToken(TokenType.RParen).MakeFatal(),
+                    (a, b, c, d, e) => Ok((Expression)new TupleConstructionExpression(a.Location, d ?? new()))
+                ),
+                // ListConstructionExpression
+                () => ParseSequence(
+                    () => ParseToken(TokenType.LBracket),
+                    () => ParseOptional(() => ParseSequence(
+                        ParseExpression,
+                        () => ParseStar(() => ParseSequence(
+                            () => ParseToken(TokenType.Comma),
+                            () => ParseExpression().MakeFatal(),
+                            (a, b) => Ok(b)
+                        )),
+                        (a, b) =>
+                        {
+                            b.Insert(0, a);
+                            return Ok(b);
+                        }
+                    )),
+                    () => ParseToken(TokenType.RBracket).MakeFatal(),
+                    (a, b, c) => Ok((Expression)new ListConstructionExpression(a.Location, b ?? new()))
+                ),
+                // IdentifierExpression
+                () => ParseToken(TokenType.Identifier).Map(t => (Expression)new IdentifierExpression(t.Location, ((StringToken)t).Value)),
+                // StringLiteralExpression
+                () => ParseToken(TokenType.String).Map(t => (Expression)new StringLiteralExpression(t.Location, ((StringToken)t).Value)),
+                // IntLiteralExpression
+                () => ParseToken(TokenType.Int).Map(t => (Expression)new IntLiteralExpression(t.Location, ((IntToken)t).Value)),
+                // FloatLiteralExpression
+                () => ParseToken(TokenType.Float).Map(t => (Expression)new FloatLiteralExpression(t.Location, ((FloatToken)t).Value)),
+                // BoolLiteralExpression
+                () => ParseToken(TokenType.Bool).Map(t => (Expression)new BoolLiteralExpression(t.Location, ((BoolToken)t).Value)),
+                // CharLiteralExpression
+                () => ParseToken(TokenType.Char).Map(t => (Expression)new CharLiteralExpression(t.Location, ((CharToken)t).Value)),
+                // (Expression)
+                () => ParseSequence(
+                    () => ParseToken(TokenType.LParen),
+                    () => ParseExpression().MakeFatal(),
+                    () => ParseToken(TokenType.RParen).MakeFatal(),
+                    (a, b, c) => Ok(b)
+                )
+            )
+        );
+
+        ParseResult<Expression> ParseBinary(TokenType t, Func<ParseResult<Expression>> lower, BinaryExpression.BOperator op) => ParseSequence(
+            lower,
+            () => ParsePlus(() => ParseSequence(
+                () => ParseToken(t),
+                () => lower().MakeFatal(),
+                (a, b) => Ok(b)
+            )),
+            (a, b) =>
+            {
+                while (b.Count > 0)
+                {
+                    a = new BinaryExpression(a.Location, a, op, b[0]);
+                    b.RemoveAt(0);
+                }
+                return Ok(a);
+            }
+        );
 
         ParseResult<Pattern> ParsePattern() => Call(nameof(ParsePattern),
             () => ParseChoice(
@@ -356,10 +721,10 @@ namespace fissure
                 () => ParseSequence(
                     () => ParseToken(TokenType.LBracket),
                     () => ParseOptional(() => ParseSequence(
-                        ParsePattern,
+                        () => ParsePattern().MakeFatal(),
                         () => ParseStar(() => ParseSequence(
                             () => ParseToken(TokenType.Comma),
-                            ParsePattern,
+                            () => ParsePattern().MakeFatal(),
                             (a, b) => Ok(b)
                         )),
                         (a, b) =>
@@ -368,7 +733,7 @@ namespace fissure
                             return Ok(b);
                         }
                     )),
-                    () => ParseToken(TokenType.RBracket),
+                    () => ParseToken(TokenType.RBracket).MakeFatal(),
                     (a, b, c) =>
                     {
                         ListPattern pattern = new(a.Location);
@@ -379,13 +744,13 @@ namespace fissure
                 // Tuple
                 () => ParseSequence(
                     () => ParseToken(TokenType.LParen),
-                    ParsePattern,
+                    () => ParsePattern().MakeFatal(),
                     () => ParseToken(TokenType.Comma),
                     () => ParseOptional(() => ParseSequence(
                         ParsePattern,
                         () => ParseStar(() => ParseSequence(
                             () => ParseToken(TokenType.Comma),
-                            ParsePattern,
+                            () => ParsePattern().MakeFatal(),
                             (a, b) => Ok(b)
                         )),
                         (a, b) =>
@@ -394,7 +759,7 @@ namespace fissure
                             return Ok(b);
                         }
                     )),
-                    () => ParseToken(TokenType.RParen),
+                    () => ParseToken(TokenType.RParen).MakeFatal(),
                     (a, b, c, d, e) =>
                     {
                         TuplePattern pattern = new(a.Location);
@@ -407,21 +772,34 @@ namespace fissure
                 () => ParseSequence(
                     () => ParseToken(TokenType.DoublePeriod),
                     () => ParseOptional(ParsePattern),
-                    (a, b) => Ok((Pattern)new VariadicPattern(a.Location, b ?? new IgnorePattern(new GeneratedLocation())))
+                    (a, b) => Ok((Pattern)new VariadicPattern(a.Location, b ?? new IgnorePattern(new GeneratedLocation(fileName))))
                 )
             )
         );
 
         ParseResult<TypeExpression> ParseTypeExpression() => throw new NotImplementedException();
 
+
+
+
+
         ParseResult<List<T>> ParseStar<T>(Func<ParseResult<T>> func)
         {
             List<T> list = new();
             while (true)
             {
+                var start = index;
                 var r = func();
-                if (r.IsFatal) return r.Transmute<List<T>>();
-                if (r.IsErr) break;
+                if (r.IsFatal)
+                {
+                    index = start;
+                    return r.Transmute<List<T>>();
+                }
+                if (r.IsErr)
+                {
+                    index = start;
+                    break;
+                }
                 list.Add(r.Unwrap());
             }
             return Ok(list);
@@ -429,11 +807,16 @@ namespace fissure
 
         ParseResult<List<T>> ParsePlus<T>(Func<ParseResult<T>> func)
         {
+            var start = index;
             var r = ParseStar(func);
             switch (r)
             {
                 case ParseResult<List<T>>.Ok_(var value):
-                    if (value.Count == 0) return Err<List<T>>("One or more was expected");
+                    if (value.Count == 0)
+                    {
+                        index = start;
+                        return Err<List<T>>(Peek().Location, "One or more was expected");
+                    }
                     return Ok(value);
                 default:
                     return r;
@@ -442,9 +825,18 @@ namespace fissure
 
         ParseResult<T?> ParseOptional<T>(Func<ParseResult<T>> func) where T: class
         {
+            var start = index;
             var r = func();
-            if (r.IsFatal) return r.Map(r => (T?)r);
-            if (r.IsErr) return Ok<T?>(null);
+            if (r.IsFatal)
+            {
+                index = start;
+                return r.Map(r => (T?)r);
+            }
+            if (r.IsErr)
+            {
+                index = start;
+                return Ok<T?>(null);
+            }
             return r.Map(r => (T?)r);
         }
 
@@ -462,22 +854,23 @@ namespace fissure
                 }
                 return r;
             }
-            return Err<T>("No choice succeeded");
+            return Err<T>(Peek().Location, "No choice succeeded");
         }
 
         ParseResult<Token> ParseToken(TokenType tokenType)
         {
             if (Peek().TokenType == tokenType) return Ok(Next());
-            return Err<Token>($"Expected token {tokenType}; found {Peek()}");
+            return Err<Token>(Peek().Location, $"Expected token {tokenType}; found {Peek()}");
         }
 
 #region ParseSequence
         ParseResult<R> ParseSequence<A, R>(Func<ParseResult<A>> fa, Func<A, ParseResult<R>> fr)
         {
+            var start = index;
             var ra = fa();
             if (ra.IsErr) return ra.Transmute<R>();
 
-            return fr(ra.Unwrap());
+            var rr = fr(ra.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
         ParseResult<R> ParseSequence<A, B, R>(
             Func<ParseResult<A>> fa,
@@ -495,7 +888,7 @@ namespace fissure
                 return rb.Transmute<R>();
             }
 
-            return fr(ra.Unwrap(), rb.Unwrap());
+            var rr = fr(ra.Unwrap(), rb.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
         ParseResult<R> ParseSequence<A, B, C, R>(
             Func<ParseResult<A>> fa,
@@ -522,7 +915,7 @@ namespace fissure
                 return rc.Transmute<R>();
             }
 
-            return fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap());
+            var rr = fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
         ParseResult<R> ParseSequence<A, B, C, D, R>(
             Func<ParseResult<A>> fa,
@@ -557,7 +950,7 @@ namespace fissure
                 return rd.Transmute<R>();
             }
 
-            return fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap());
+            var rr = fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
         ParseResult<R> ParseSequence<A, B, C, D, E, R>(
             Func<ParseResult<A>> fa,
@@ -600,7 +993,7 @@ namespace fissure
                 return re.Transmute<R>();
             }
 
-            return fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap(), re.Unwrap());
+            var rr = fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap(), re.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
         ParseResult<R> ParseSequence<A, B, C, D, E, F, R>(
             Func<ParseResult<A>> fa,
@@ -651,7 +1044,7 @@ namespace fissure
                 return rf.Transmute<R>();
             }
 
-            return fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap(), re.Unwrap(), rf.Unwrap());
+            var rr = fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap(), re.Unwrap(), rf.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
         ParseResult<R> ParseSequence<A, B, C, D, E, F, G, R>(
             Func<ParseResult<A>> fa,
@@ -710,7 +1103,7 @@ namespace fissure
                 return rg.Transmute<R>();
             }
 
-            return fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap(), re.Unwrap(), rf.Unwrap(), rg.Unwrap());
+            var rr = fr(ra.Unwrap(), rb.Unwrap(), rc.Unwrap(), rd.Unwrap(), re.Unwrap(), rf.Unwrap(), rg.Unwrap()); if (rr.IsErr) { index = start; } return rr;
         }
 #endregion
 
@@ -721,15 +1114,17 @@ namespace fissure
             {
                 i++;
             }
-            if (Peek(i).TokenType == TokenType.EOF)
+            var tok = Peek(i);
+            var col = (tok.Location as ConcreteLocation ?? throw new Exception("Generated location is not valid here; find place where it is generated and resolve")).Column;
+            if (tok.TokenType == TokenType.EOF)
             {
-                return Err<List<T>>("Expected indented block");
+                return Err<List<T>>(Peek().Location, "Expected indented block");
             }
-            if (Peek(i).Location.Column <= indentStack.Last())
+            if (col <= indentStack.Last())
             {
-                return Err<List<T>>("Expected indented block");
+                return Err<List<T>>(Peek().Location, "Expected indented block");
             }
-            indentStack.Add(Peek(i).Location.Column);
+            indentStack.Add(col);
 
             List<T> ret = new();
 
@@ -740,7 +1135,7 @@ namespace fissure
                 if (r.IsFatal) return r.Transmute<List<T>>();
                 if (r.IsErr) break;
                 var v = r.Unwrap();
-                if (v.Location.Column != indentStack.Last())
+                if ((v.Location as ConcreteLocation ?? throw new Exception("Generated location is not valid here; find place where it is generated and resolve")).Column != indentStack.Last())
                 {
                     index = start;
                     break;
@@ -756,29 +1151,20 @@ namespace fissure
             Token tok;
             if (index >= tokens.Count)
             {
-                tok = lexer.Next();
-                if (tok.TokenType == TokenType.EOF)
-                {
-                    return tok;
-                }
-                tokens.Add(tok);
-                index++;
-                return tok;
+                return new Token(new GeneratedLocation(fileName), TokenType.EOF);
             }
             tok = tokens[index];
-            index++;
+            if (tok.TokenType != TokenType.EOF)
+            {
+                index++;
+            }
             return tok;
         }
         Token Peek(int k)
         {
-            while (index + k >= tokens.Count)
+            if (index + k >= tokens.Count)
             {
-                var tok = lexer.Next();
-                if (tok.TokenType == TokenType.EOF)
-                {
-                    return tok;
-                }
-                tokens.Add(tok);
+                return new Token(new GeneratedLocation(fileName), TokenType.EOF);
             }
             return tokens[index + k];
         }
@@ -786,8 +1172,8 @@ namespace fissure
         Token Peek() => Peek(0);
 
         ParseResult<T> Ok<T>(T value) => ParseResult<T>.Ok(value);
-        ParseResult<T> Err<T>(string error) => ParseResult<T>.Err(error);
-        ParseResult<T> Fatal<T>(string error) => ParseResult<T>.Fatal(error);
+        ParseResult<T> Err<T>(Location location, string error) => ParseResult<T>.Err(location, error);
+        ParseResult<T> Fatal<T>(Location location, string error) => ParseResult<T>.Fatal(location, error);
     }
 
     static class ExtensionMethods

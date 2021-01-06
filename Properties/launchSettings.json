@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "fissure": {
+      "commandName": "Project",
+      "commandLineArgs": "test.fiss",
+      "workingDirectory": "C:\\Users\\einar\\source\\repos\\Fissure"
+    }
+  }
+}

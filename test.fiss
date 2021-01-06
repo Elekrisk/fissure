@@ -1,5 +1,13 @@
 
 struct Program:
-    main(args):
-        let val = args { get index: 0 }
-        system.stdout { println value: val }
+    Main(system):
+        let i = 1
+        while i < 100:
+            if i - (i // 15) * 15 == 0:
+                system.StdOut { PrintLn value: "FizzBuzz" }
+            else if i - (i // 3) * 3 == 0:
+                system.StdOut { PrintLn value: "Fizz" }
+            else if i - (i // 5) * 5 == 0:
+                system.StdOut { PrintLn value: "Buzz" }
+            else:
+                system.StdOut { PrintLn value: i }

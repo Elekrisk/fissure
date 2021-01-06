@@ -27,6 +27,13 @@ namespace fissure
 
     record GeneratedLocation : Location
     {
+        public string FileName;
+
+        public GeneratedLocation(string fileName)
+        {
+            FileName = fileName;
+        }
+
         public override string ToString() => "Generated";
     }
 }

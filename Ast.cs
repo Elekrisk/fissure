@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Linq;
 
 namespace fissure.Ast
 {
@@ -22,6 +23,7 @@ namespace fissure.Ast
         {
             
         }
+
     }
 
     class StructDeclaration : Node
@@ -35,6 +37,7 @@ namespace fissure.Ast
         {
             Name = name;
         }
+
     }
 
     class MemberDeclaration : Node
@@ -47,6 +50,7 @@ namespace fissure.Ast
             Name = name;
             Type = type;
         }
+
     }
 
     class MessageHandlerDeclaration : Node
@@ -62,6 +66,7 @@ namespace fissure.Ast
             Name = name;
             Body = body;
         }
+
     }
 
     class Parameter : Node
@@ -74,6 +79,7 @@ namespace fissure.Ast
             Name = name;
             Type = type;
         }
+
     }
 
     abstract class TypeExpression : Node
@@ -82,6 +88,7 @@ namespace fissure.Ast
         {
 
         }
+
     }
 
     class IdentifierTypeExpression : TypeExpression
@@ -93,6 +100,7 @@ namespace fissure.Ast
         {
             Name = name;
         }
+
     }
 
     class ListTypeExpression : TypeExpression
@@ -103,6 +111,7 @@ namespace fissure.Ast
         {
             InnerType = innerType;
         }
+
     }
 
     class TupleTypeExpression : TypeExpression
@@ -115,6 +124,7 @@ namespace fissure.Ast
         {
 
         }
+
     }
     
     class VariadicTypeExpression : TypeExpression
@@ -125,6 +135,7 @@ namespace fissure.Ast
         {
             InnerType = innerType;
         }
+
     }
 
     abstract class Pattern : Node
@@ -143,6 +154,7 @@ namespace fissure.Ast
         {
             Name = name;
         }
+
     }
 
     class ListPattern : Pattern
@@ -153,6 +165,7 @@ namespace fissure.Ast
         {
 
         }
+
     }
 
     class TuplePattern : Pattern
@@ -161,8 +174,9 @@ namespace fissure.Ast
 
         public TuplePattern(Location location) : base(location)
         {
-            
+
         }
+
     }
 
     class VariadicPattern : Pattern
@@ -173,14 +187,16 @@ namespace fissure.Ast
         {
             InnerPattern = innerPattern;
         }
+
     }
 
     class IgnorePattern : Pattern
     {
         public IgnorePattern(Location location) : base(location)
         {
-            
+
         }
+
     }
 
     abstract class TypeConstraint : Node
@@ -197,6 +213,7 @@ namespace fissure.Ast
         {
 
         }
+
     }
 
     class BlockExpression : Expression
@@ -207,6 +224,7 @@ namespace fissure.Ast
         {
 
         }
+
     }
 
     class IdentifierExpression : Expression
@@ -217,6 +235,7 @@ namespace fissure.Ast
         {
             Name = name;
         }
+
     }
 
     class StringLiteralExpression : Expression
@@ -227,6 +246,7 @@ namespace fissure.Ast
         {
             Value = value;
         }
+
     }
 
     class IntLiteralExpression : Expression
@@ -237,6 +257,7 @@ namespace fissure.Ast
         {
             Value = value;
         }
+
     }
 
     class FloatLiteralExpression : Expression
@@ -247,6 +268,7 @@ namespace fissure.Ast
         {
             Value = value;
         }
+
     }
 
     class BoolLiteralExpression : Expression
@@ -257,6 +279,7 @@ namespace fissure.Ast
         {
             Value = value;
         }
+
     }
 
     class CharLiteralExpression : Expression
@@ -267,6 +290,29 @@ namespace fissure.Ast
         {
             Value = value;
         }
+
+    }
+
+    class TupleConstructionExpression : Expression
+    {
+        public List<Expression> Expressions { get; init; } = new();
+
+        public TupleConstructionExpression(Location location, List<Expression> expressions) : base(location)
+        {
+            Expressions = expressions;
+        }
+
+    }
+
+    class ListConstructionExpression : Expression
+    {
+        public List<Expression> Expressions { get; init; } = new();
+
+        public ListConstructionExpression(Location location, List<Expression> expressions) : base(location)
+        {
+            Expressions = expressions;
+        }
+
     }
 
     class BinaryExpression : Expression
@@ -282,6 +328,7 @@ namespace fissure.Ast
             Right = right;
         }
 
+
         public enum BOperator {
             Add,
             Subtract,
@@ -293,8 +340,40 @@ namespace fissure.Ast
             LesserThan,
             LesserThanOrEqual,
             Equal,
-            NotEqual
+            NotEqual,
+            And,
+            Or,
+            Xor
         }
+    }
+
+    static class ExtensionMethods
+    {
+        public static string GetString(this BinaryExpression.BOperator op) => op switch
+        {
+            BinaryExpression.BOperator.Add => "+",
+            BinaryExpression.BOperator.Subtract => "-",
+            BinaryExpression.BOperator.Divide => "/",
+            BinaryExpression.BOperator.IntegerDivide => "//",
+            BinaryExpression.BOperator.Multiply => "*",
+            BinaryExpression.BOperator.GreaterThan => ">",
+            BinaryExpression.BOperator.GreaterThanOrEqual => ">=",
+            BinaryExpression.BOperator.LesserThan => "<",
+            BinaryExpression.BOperator.LesserThanOrEqual => "<=",
+            BinaryExpression.BOperator.Equal => "==",
+            BinaryExpression.BOperator.NotEqual => "!=",
+            BinaryExpression.BOperator.And => "and",
+            BinaryExpression.BOperator.Or => "or",
+            BinaryExpression.BOperator.Xor => "xor",
+            _ => throw new NotImplementedException()
+        };
+
+        public static string GetString(this UnaryExpression.UOperator op) => op switch
+        {
+            UnaryExpression.UOperator.Negate => "-",
+            UnaryExpression.UOperator.Not => "!",
+            _ => throw new NotImplementedException()
+        };
     }
 
     class UnaryExpression : Expression
@@ -307,6 +386,7 @@ namespace fissure.Ast
             Operator = @operator;
             Expression = expression;
         }
+
 
         public enum UOperator
         {
@@ -325,6 +405,7 @@ namespace fissure.Ast
             Root = root;
             Name = name;
         }
+
     }
 
     class ObjectCreationExpression : Expression
@@ -335,6 +416,7 @@ namespace fissure.Ast
         {
             Type = type;
         }
+
     }
 
     class MessageCreationExpression : Expression
@@ -346,18 +428,62 @@ namespace fissure.Ast
         {
             Header = header;
         }
+
     }
 
-    abstract class Argument : Node
+    class MessageApplicationExpression : Expression
+    {
+        public Expression Receiver;
+        public Expression Message;
+
+        public MessageApplicationExpression(Location location, Expression receiver, Expression message) : base(location)
+        {
+            Receiver = receiver;
+            Message = message;
+        }
+
+    }
+
+    class IfExpression : Expression
+    {
+        public Expression Condition;
+        public Expression Body;
+        public List<ElseIfExpression> ElseIfExpressions { get; init; } = new();
+        public Expression? ElseExpression;
+
+        public IfExpression(Location location, Expression condition, Expression body, Expression? elseExpression) : base(location)
+        {
+            Condition = condition;
+            Body = body;
+            ElseExpression = elseExpression;
+        }
+
+    }
+
+    class ElseIfExpression : Expression
+    {
+        public Expression Condition;
+        public Expression Body;
+
+        public ElseIfExpression(Location location, Expression condition, Expression body) : base(location)
+        {
+            Condition = condition;
+            Body = body;
+        }
+
+    }
+
+    class Argument : Node
     {
         public string Key;
         public Expression Value;
 
-        protected Argument(Location location, string key, Expression value) : base(location)
+        public Argument(Location location, string key, Expression value) : base(location)
         {
             Key = key;
             Value = value;
         }
+
     }
 
     abstract class Statement : Node
@@ -378,6 +504,7 @@ namespace fissure.Ast
             Pattern = pattern;
             Expression = expression;
         }
+
     }
 
     class AssignStatement : Statement
@@ -390,6 +517,7 @@ namespace fissure.Ast
             Path = path;
             Expression = expression;
         }
+
     }
 
     abstract class Path : Node
@@ -408,6 +536,7 @@ namespace fissure.Ast
         {
             Name = name;
         }
+
     }
 
     class PropertyPath : Path
@@ -420,6 +549,7 @@ namespace fissure.Ast
             Path = path;
             Name = name;
         }
+
     }
 
     class ForStatement : Statement
@@ -434,6 +564,7 @@ namespace fissure.Ast
             Iterator = iterator;
             Body = body;
         }
+
     }
 
     class WhileStatement : Statement
@@ -446,6 +577,7 @@ namespace fissure.Ast
             Condition = condition;
             Body = body;
         }
+
     }
 
     class ExpressionStatement : Statement
@@ -456,5 +588,6 @@ namespace fissure.Ast
         {
             Expression = expression;
         }
+
     }
 }

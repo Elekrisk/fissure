@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace fissure
@@ -16,6 +17,7 @@ namespace fissure
     
     class Lexer
     {
+        public readonly string FileName;
         readonly string code;
         int index = 0;
         Location location;
@@ -24,9 +26,10 @@ namespace fissure
 
         public Lexer(string fileName, string code)
         {
-            location = new() { FileName = fileName, Column = -1, Row = -1, Index = -1 };
-            nextLocation = new() { FileName = fileName, Column = 1, Row = 1, Index = 0 };
-            startLocation = nextLocation;
+            FileName = fileName;
+            location = new GeneratedLocation(fileName);
+            nextLocation = new ConcreteLocation(fileName, 1, 1, 0);
+            startLocation = nextLocation with { };
             this.code = code;
         }
 
@@ -237,6 +240,7 @@ namespace fissure
                                     "while" => New(TokenType.While),
                                     "true" => New(true),
                                     "false" => New(false),
+                                    "new" => New(TokenType.New),
                                     "_" => New(TokenType.Ignore),
                                     _ => New(TokenType.Identifier, buffer)
                                 };
@@ -245,13 +249,28 @@ namespace fissure
                     }
                     if (char.IsWhiteSpace(c ?? '.'))
                     {
-                        while (char.IsWhiteSpace(PeekChar() ?? '.'))
+                        while (PeekChar() != '\n' && char.IsWhiteSpace(PeekChar() ?? '.'))
                         {
                             NextChar();
                         }
                         return Next();
                     }
                     throw Error($"Unexpected character ({code[index - 1]})");
+            }
+        }
+
+        public List<Token> Lex()
+        {
+            List<Token> ret = new();
+            while (true)
+            {
+                var tok = Next();
+                if (tok.TokenType == TokenType.EOF)
+                {
+                    ret.Add(tok);
+                    return ret;
+                }
+                ret.Add(tok);
             }
         }
 
@@ -282,17 +301,17 @@ namespace fissure
             {
                 return null;
             }
-            location = nextLocation;
+            location = nextLocation with { };
             switch (code[index])
             {
                 case '\n':
-                    nextLocation.Row++;
-                    nextLocation.Column = 1;
-                    nextLocation.Index++;
+                    ((ConcreteLocation)nextLocation).Row++;
+                    ((ConcreteLocation)nextLocation).Column = 1;
+                    ((ConcreteLocation)nextLocation).Index++;
                     break;
                 default:
-                    nextLocation.Column++;
-                    nextLocation.Index++;
+                    ((ConcreteLocation)nextLocation).Column++;
+                    ((ConcreteLocation)nextLocation).Index++;
                     break;
             }
             var ret = code[index];
